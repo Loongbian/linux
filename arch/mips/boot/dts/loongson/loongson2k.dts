@@ -237,6 +237,17 @@
 				interrupt-parent = <&liointc0>;
 			};
 
+			hda@7,0 {
+				compatible = "pci0014,7a07.0",
+						   "pci0014,7a07",
+						   "pciclass010601",
+						   "pciclass0106";
+
+				reg = <0x3800 0x0 0x0 0x0 0x0>;
+				interrupts = <4 IRQ_TYPE_LEVEL_LOW>;
+				interrupt-parent = <&liointc0>;
+			};
+
 			sata@8,0 {
 				compatible = "pci0014,7a08.0",
 						   "pci0014,7a08",
