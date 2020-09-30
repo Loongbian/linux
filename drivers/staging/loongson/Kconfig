@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-2.0
+config STAGING_LOONGSON
+	bool "Loongson Staging Drivers"
+	depends on MACH_LOONGSON64
+	default MACH_LOONGSON64
+	help
+	  Loongson Staging Drivers.
+
+if STAGING_LOONGSON
+
+config LOONGSON_GPIO
+	bool "Loongson GPIO"
+	depends on MACH_LOONGSON64
+	depends on GPIOLIB
+	default MACH_LOONGSON64
+	help
+	  Loongson GPIO.
+
+config LOONGSON_LS2K_PWM
+	bool "Loongson LS2K PWM"
+	depends on MACH_LOONGSON64
+	select PWM
+	default MACH_LOONGSON64
+	help
+	  Loongson LS2K PWM.
+
+endif

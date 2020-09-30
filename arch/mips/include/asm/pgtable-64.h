@@ -139,21 +139,15 @@
 #define USER_PTRS_PER_PGD       ((TASK_SIZE64 / PGDIR_SIZE)?(TASK_SIZE64 / PGDIR_SIZE):1)
 #define FIRST_USER_ADDRESS	0UL
 
-/*
- * TLB refill handlers also map the vmalloc area into xuseg.  Avoid
- * the first couple of pages so NULL pointer dereferences will still
- * reliably trap.
- */
-#define VMALLOC_START		(MAP_BASE + (2 * PAGE_SIZE))
 #define VMALLOC_END	\
 	(MAP_BASE + \
 	 min(PTRS_PER_PGD * PTRS_PER_PUD * PTRS_PER_PMD * PTRS_PER_PTE * PAGE_SIZE, \
 	     (1UL << cpu_vmbits)) - (1UL << 32))
 
 #if defined(CONFIG_MODULES) && defined(KBUILD_64BIT_SYM32) && \
-	VMALLOC_START != CKSSEG
+	VMALLOC_START != CKSEG2
 /* Load modules into 32bit-compatible segment. */
-#define MODULE_START	CKSSEG
+#define MODULE_START	CKSEG2
 #define MODULE_END	(FIXADDR_START-2*PAGE_SIZE)
 #endif
 
@@ -171,6 +165,8 @@
 	printk("%s:%d: bad pgd %016lx.\n", __FILE__, __LINE__, pgd_val(e))
 
 extern pte_t invalid_pte_table[PTRS_PER_PTE];
+
+#define pud_index(address)	(((address) >> PUD_SHIFT) & (PTRS_PER_PUD - 1))
 
 #ifndef __PAGETABLE_PUD_FOLDED
 /*
@@ -209,8 +205,6 @@ static inline void p4d_clear(p4d_t *p4dp)
 {
 	p4d_val(*p4dp) = (unsigned long)invalid_pud_table;
 }
-
-#define pud_index(address)	(((address) >> PUD_SHIFT) & (PTRS_PER_PUD - 1))
 
 static inline unsigned long p4d_page_vaddr(p4d_t p4d)
 {

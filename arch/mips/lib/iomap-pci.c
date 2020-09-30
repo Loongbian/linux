@@ -27,7 +27,7 @@ void __iomem *__pci_ioport_map(struct pci_dev *dev,
 		while (bus->parent)
 			bus = bus->parent;
 
-		ctrl->io_map_base = base = mips_io_port_base;
+		ctrl->io_map_base = base = IOPORT_RW_BASE;
 
 		sprintf(name, "%04x:%02x", pci_domain_nr(bus), bus->number);
 		printk(KERN_WARNING "io_map_base of root PCI bus %s unset.  "

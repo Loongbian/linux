@@ -10,9 +10,9 @@
 #ifndef _ASM_MACH_GENERIC_SPACES_H
 #define _ASM_MACH_GENERIC_SPACES_H
 
-#include <linux/const.h>
-
+#include <asm/addrspace.h>
 #include <asm/mipsregs.h>
+#include <asm/page-def.h>
 
 /*
  * This gives the physical RAM offset.
@@ -29,20 +29,20 @@
 #ifdef CONFIG_KVM_GUEST
 #define CAC_BASE		_AC(0x40000000, UL)
 #else
-#define CAC_BASE		_AC(0x80000000, UL)
+#define CAC_BASE	CKSEG0
 #endif
 #ifndef IO_BASE
-#define IO_BASE			_AC(0xa0000000, UL)
+#define IO_BASE		CKSEG1
 #endif
 #ifndef UNCAC_BASE
-#define UNCAC_BASE		_AC(0xa0000000, UL)
+#define UNCAC_BASE	CKSEG1
 #endif
 
 #ifndef MAP_BASE
 #ifdef CONFIG_KVM_GUEST
 #define MAP_BASE		_AC(0x60000000, UL)
 #else
-#define MAP_BASE		_AC(0xc0000000, UL)
+#define MAP_BASE		CKSEG2
 #endif
 #endif
 
@@ -58,19 +58,19 @@
 #ifdef CONFIG_64BIT
 
 #ifndef CAC_BASE
-#define CAC_BASE	PHYS_TO_XKPHYS(read_c0_config() & CONF_CM_CMASK, 0)
+#define CAC_BASE		PHYS_TO_XKPHYS(read_c0_config() & CONF_CM_CMASK, 0)
 #endif
 
 #ifndef IO_BASE
-#define IO_BASE			_AC(0x9000000000000000, UL)
+#define IO_BASE			PHYS_TO_XKPHYS(K_CALG_UNCACHED, 0)
 #endif
 
 #ifndef UNCAC_BASE
-#define UNCAC_BASE		_AC(0x9000000000000000, UL)
+#define UNCAC_BASE		PHYS_TO_XKPHYS(K_CALG_UNCACHED, 0)
 #endif
 
 #ifndef MAP_BASE
-#define MAP_BASE		_AC(0xc000000000000000, UL)
+#define MAP_BASE		XKSEG
 #endif
 
 /*
@@ -99,8 +99,28 @@
 #ifdef CONFIG_KVM_GUEST
 #define FIXADDR_TOP		((unsigned long)(long)(int)0x7ffe0000)
 #else
-#define FIXADDR_TOP		((unsigned long)(long)(int)0xfffe0000)
+#define FIXADDR_TOP		(CKSEG3 + 0x1ffe0000)
 #endif
 #endif
+
+#ifdef CONFIG_PCI_IO_VMMAP
+#define PCI_IO_SIZE		SZ_16M
+#else
+#define PCI_IO_SIZE		0
+#endif
+
+#ifdef CONFIG_64BIT
+/*
+ * TLB refill handlers also map the vmalloc area into xuseg.  Avoid
+ * the first couple of pages so NULL pointer dereferences will still
+ * reliably trap.
+ */
+#define PCI_IO_START		(MAP_BASE + (2 * PAGE_SIZE))
+#else
+#define PCI_IO_START		MAP_BASE
+#endif
+
+#define PCI_IO_END		(PCI_IO_START + PCI_IO_SIZE)
+#define VMALLOC_START		PCI_IO_END
 
 #endif /* __ASM_MACH_GENERIC_SPACES_H */

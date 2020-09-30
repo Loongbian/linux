@@ -320,10 +320,10 @@ config GPIO_LOGICVC
 	  programmable logic block.
 
 config GPIO_LOONGSON
-	bool "Loongson-2/3 GPIO support"
-	depends on CPU_LOONGSON2EF || CPU_LOONGSON64
+	bool "Loongson-2EF GPIO support"
+	depends on CPU_LOONGSON2EF
 	help
-	  driver for GPIO functionality on Loongson-2F/3A/3B processors.
+	  driver for GPIO functionality on Loongson-2F processors.
 
 config GPIO_LPC18XX
 	tristate "NXP LPC18XX/43XX GPIO support"

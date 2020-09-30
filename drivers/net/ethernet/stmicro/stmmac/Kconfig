@@ -87,6 +87,13 @@ config DWMAC_LPC18XX
 	---help---
 	  Support for NXP LPC18xx/43xx DWMAC Ethernet.
 
+config DWMAC_LOONGSON_PCI
+	tristate "Loongson PCI DWMAC support"
+	default MACH_LOONGSON64
+	depends on OF && (MACH_LOONGSON64 || COMPILE_TEST)
+	---help---
+	  Support for NXP LPC18xx/43xx DWMAC Ethernet.
+
 config DWMAC_MEDIATEK
 	tristate "MediaTek MT27xx GMAC support"
 	depends on OF && (ARCH_MEDIATEK || COMPILE_TEST)

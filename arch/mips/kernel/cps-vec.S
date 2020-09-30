@@ -4,7 +4,8 @@
  * Author: Paul Burton <paul.burton@mips.com>
  */
 
-#include <asm/addrspace.h>
+#include <spaces.h>
+
 #include <asm/asm.h>
 #include <asm/asm-offsets.h>
 #include <asm/asmmacro.h>

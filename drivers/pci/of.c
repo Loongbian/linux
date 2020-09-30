@@ -547,12 +547,21 @@ int pci_parse_request_of_pci_ranges(struct device *dev,
 
 		switch (resource_type(res)) {
 		case IORESOURCE_IO:
+#if defined(PCI_IOBASE) && defined(CONFIG_MMU)
 			err = devm_pci_remap_iospace(dev, res, iobase);
 			if (err) {
 				dev_warn(dev, "error %d: failed to map resource %pR\n",
 					 err, res);
 				resource_list_destroy_entry(win);
 			}
+#else
+			/* Simply check if IO is inside the range */
+			if (res->end > IO_SPACE_LIMIT) {
+				dev_warn(dev, "resource %pR out of the IO range\n",
+					res);
+				resource_list_destroy_entry(win);
+			}
+#endif
 			break;
 		case IORESOURCE_MEM:
 			res_valid |= !(res->flags & IORESOURCE_PREFETCH);

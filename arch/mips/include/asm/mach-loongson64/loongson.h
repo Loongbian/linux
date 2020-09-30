@@ -86,6 +86,8 @@ extern int mach_i8259_irq(void);
 #define LOONGSON_PCIIO_SIZE	0x00100000	/* 1M */
 #define LOONGSON_PCIIO_TOP	(LOONGSON_PCIIO_BASE+LOONGSON_PCIIO_SIZE-1)
 
+#define MMIO_LOWER_RESERVED	0x10000
+
 /* Loongson Register Bases */
 
 #define LOONGSON_PCICONFIGBASE	0x00

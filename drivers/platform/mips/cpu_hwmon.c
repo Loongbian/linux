@@ -169,6 +169,9 @@ static int __init loongson_hwmon_init(void)
 {
 	int ret;
 
+	if (!loongson_chipcfg[0])
+		return;
+
 	pr_info("Loongson Hwmon Enter...\n");
 
 	if (cpu_has_csr())

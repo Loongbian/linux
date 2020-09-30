@@ -317,7 +317,7 @@ out:
  *
  * It returns 0 in case of success otherwise -ENODEV.
  */
-static int stmmac_dt_phy(struct plat_stmmacenet_data *plat,
+int stmmac_dt_phy(struct plat_stmmacenet_data *plat,
 			 struct device_node *np, struct device *dev)
 {
 	bool mdio = !of_phy_is_fixed_link(np);
@@ -367,7 +367,7 @@ static int stmmac_dt_phy(struct plat_stmmacenet_data *plat,
  * that there is mode converter in-between the MAC & PHY
  * (e.g. GMII-to-RGMII).
  */
-static int stmmac_of_get_mac_mode(struct device_node *np)
+int stmmac_of_get_mac_mode(struct device_node *np)
 {
 	const char *pm;
 	int err, i;
@@ -629,6 +629,15 @@ void stmmac_remove_config_dt(struct platform_device *pdev,
 }
 #else
 struct plat_stmmacenet_data *
+int stmmac_dt_phy(struct plat_stmmacenet_data *plat,
+			 struct device_node *np, struct device *dev)
+{
+	return -EINVAL;	
+}
+int stmmac_of_get_mac_mode(struct device_node *np)
+{
+	return -EINVAL;
+}
 stmmac_probe_config_dt(struct platform_device *pdev, const char **mac)
 {
 	return ERR_PTR(-EINVAL);
@@ -639,6 +648,8 @@ void stmmac_remove_config_dt(struct platform_device *pdev,
 {
 }
 #endif /* CONFIG_OF */
+EXPORT_SYMBOL_GPL(stmmac_dt_phy);
+EXPORT_SYMBOL_GPL(stmmac_of_get_mac_mode);
 EXPORT_SYMBOL_GPL(stmmac_probe_config_dt);
 EXPORT_SYMBOL_GPL(stmmac_remove_config_dt);
 

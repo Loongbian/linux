@@ -37,13 +37,11 @@ extern int sbx00_acpi_init(void);
 static int __init pcibios_init(void)
 {
 
-	loongson_pci_controller.io_map_base = mips_io_port_base;
+	loongson_pci_controller.io_map_base = IOPORT_RW_BASE;
 	loongson_pci_mem_resource.start = loongson_sysconf.pci_mem_start_addr;
 	loongson_pci_mem_resource.end = loongson_sysconf.pci_mem_end_addr;
 
 	register_pci_controller(&loongson_pci_controller);
-
-	sbx00_acpi_init();
 
 	return 0;
 }

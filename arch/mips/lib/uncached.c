@@ -9,13 +9,11 @@
  */
 
 
-#include <asm/addrspace.h>
+#include <spaces.h>
+
 #include <asm/bug.h>
 #include <asm/cacheflush.h>
 
-#ifndef CKSEG2
-#define CKSEG2 CKSSEG
-#endif
 #ifndef TO_PHYS_MASK
 #define TO_PHYS_MASK -1
 #endif

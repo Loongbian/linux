@@ -2,6 +2,8 @@
 #ifndef __MIPS_ASM_SYNC_H__
 #define __MIPS_ASM_SYNC_H__
 
+#include <linux/stringify.h>
+
 /*
  * sync types are defined by the MIPS64 Instruction Set documentation in Volume
  * II-A of the MIPS Architecture Reference Manual, which can be found here:

@@ -10,7 +10,7 @@
 #ifndef _ASM_ADDRSPACE_H
 #define _ASM_ADDRSPACE_H
 
-#include <spaces.h>
+#include <linux/const.h>
 
 /*
  *  Configure language
@@ -67,7 +67,7 @@
 #define XKSEG			_CONST64_(0xc000000000000000)
 #define CKSEG0			_CONST64_(0xffffffff80000000)
 #define CKSEG1			_CONST64_(0xffffffffa0000000)
-#define CKSSEG			_CONST64_(0xffffffffc0000000)
+#define CKSEG2			_CONST64_(0xffffffffc0000000)
 #define CKSEG3			_CONST64_(0xffffffffe0000000)
 
 #define CKSEG0ADDR(a)		(CPHYSADDR(a) | CKSEG0)
