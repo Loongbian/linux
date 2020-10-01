@@ -95,7 +95,11 @@ static int ls2k_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 		val0 = 1;
 	period = val0;
 
-	val1 = CPU_FRQ_PWM * duty_ns;
+	if (period_ns >= duty_ns)
+		val1 = CPU_FRQ_PWM * (period_ns - duty_ns);
+	else
+		val1 = 0;
+
 	do_div(val1, NSEC_PER_SEC);
 	if (val1 < 1)
 		val1 = 1;
