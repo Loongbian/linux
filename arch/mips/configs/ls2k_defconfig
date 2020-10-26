@@ -1,9 +1,4 @@
 #
-# Automatically generated file; DO NOT EDIT.
-# Linux/mips 5.7.0-rc1 Kernel Configuration
-#
-
-#
 # Compiler: mips64el-linux-gnuabi64-gcc (Debian 9.2.1-24) 9.2.1 20200117
 #
 CONFIG_CC_IS_GCC=y
@@ -337,7 +332,7 @@ CONFIG_MIPS_FP_SUPPORT=y
 CONFIG_CPU_R4K_FPU=y
 CONFIG_CPU_R4K_CACHE_TLB=y
 CONFIG_CPU_NEEDS_NO_SMARTMIPS_OR_MICROMIPS=y
-# CONFIG_CPU_HAS_MSA is not set
+CONFIG_CPU_HAS_MSA=y
 CONFIG_CPU_HAS_WB=y
 CONFIG_CPU_DIEI_BROKEN=y
 CONFIG_CPU_HAS_RIXI=y
