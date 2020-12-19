@@ -116,7 +116,7 @@ case $ARCH in
 um)
 	installed_image_path="usr/bin/linux-$version"
 	;;
-parisc|mips|powerpc)
+parisc|powerpc)
 	installed_image_path="boot/vmlinux-$version"
 	;;
 *)
