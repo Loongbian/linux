@@ -342,9 +342,10 @@ struct ipoib_walk_data {
 	struct net_device *result;
 };
 
-static int ipoib_upper_walk(struct net_device *upper, void *_data)
+static int ipoib_upper_walk(struct net_device *upper,
+			    struct netdev_nested_priv *priv)
 {
-	struct ipoib_walk_data *data = _data;
+	struct ipoib_walk_data *data = (struct ipoib_walk_data *)priv->data;
 	int ret = 0;
 
 	if (ipoib_is_dev_match_addr_rcu(data->addr, upper)) {
@@ -368,10 +369,12 @@ static int ipoib_upper_walk(struct net_device *upper, void *_data)
 static struct net_device *ipoib_get_net_dev_match_addr(
 		const struct sockaddr *addr, struct net_device *dev)
 {
+	struct netdev_nested_priv priv;
 	struct ipoib_walk_data data = {
 		.addr = addr,
 	};
 
+	priv.data = (void *)&data;
 	rcu_read_lock();
 	if (ipoib_is_dev_match_addr_rcu(addr, dev)) {
 		dev_hold(dev);
@@ -379,7 +382,7 @@ static struct net_device *ipoib_get_net_dev_match_addr(
 		goto out;
 	}
 
-	netdev_walk_all_upper_dev_rcu(dev, ipoib_upper_walk, &data);
+	netdev_walk_all_upper_dev_rcu(dev, ipoib_upper_walk, &priv);
 out:
 	rcu_read_unlock();
 	return data.result;
@@ -2263,7 +2266,7 @@ static ssize_t show_pkey(struct device *dev,
 	struct net_device *ndev = to_net_dev(dev);
 	struct ipoib_dev_priv *priv = ipoib_priv(ndev);
 
-	return sprintf(buf, "0x%04x\n", priv->pkey);
+	return sysfs_emit(buf, "0x%04x\n", priv->pkey);
 }
 static DEVICE_ATTR(pkey, S_IRUGO, show_pkey, NULL);
 
@@ -2273,7 +2276,8 @@ static ssize_t show_umcast(struct device *dev,
 	struct net_device *ndev = to_net_dev(dev);
 	struct ipoib_dev_priv *priv = ipoib_priv(ndev);
 
-	return sprintf(buf, "%d\n", test_bit(IPOIB_FLAG_UMCAST, &priv->flags));
+	return sysfs_emit(buf, "%d\n",
+			  test_bit(IPOIB_FLAG_UMCAST, &priv->flags));
 }
 
 void ipoib_set_umcast(struct net_device *ndev, int umcast_val)
@@ -2443,7 +2447,7 @@ static ssize_t dev_id_show(struct device *dev,
 			"\"%s\" wants to know my dev_id. Should it look at dev_port instead? See Documentation/ABI/testing/sysfs-class-net for more info.\n",
 			current->comm);
 
-	return sprintf(buf, "%#x\n", ndev->dev_id);
+	return sysfs_emit(buf, "%#x\n", ndev->dev_id);
 }
 static DEVICE_ATTR_RO(dev_id);
 
@@ -2476,6 +2480,8 @@ static struct net_device *ipoib_add_port(const char *format,
 
 	/* call event handler to ensure pkey in sync */
 	queue_work(ipoib_workqueue, &priv->flush_heavy);
+
+	ndev->rtnl_link_ops = ipoib_get_link_ops();
 
 	result = register_netdev(ndev);
 	if (result) {

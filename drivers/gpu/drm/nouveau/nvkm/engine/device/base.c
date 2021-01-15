@@ -1815,7 +1815,7 @@ nvf0_chipset = {
 	.fb = gk110_fb_new,
 	.fuse = gf100_fuse_new,
 	.gpio = gk104_gpio_new,
-	.i2c = gk104_i2c_new,
+	.i2c = gk110_i2c_new,
 	.ibus = gk104_ibus_new,
 	.iccsense = gf100_iccsense_new,
 	.imem = nv50_instmem_new,
@@ -1853,7 +1853,7 @@ nvf1_chipset = {
 	.fb = gk110_fb_new,
 	.fuse = gf100_fuse_new,
 	.gpio = gk104_gpio_new,
-	.i2c = gk104_i2c_new,
+	.i2c = gk110_i2c_new,
 	.ibus = gk104_ibus_new,
 	.iccsense = gf100_iccsense_new,
 	.imem = nv50_instmem_new,
@@ -1891,7 +1891,7 @@ nv106_chipset = {
 	.fb = gk110_fb_new,
 	.fuse = gf100_fuse_new,
 	.gpio = gk104_gpio_new,
-	.i2c = gk104_i2c_new,
+	.i2c = gk110_i2c_new,
 	.ibus = gk104_ibus_new,
 	.iccsense = gf100_iccsense_new,
 	.imem = nv50_instmem_new,
@@ -1929,7 +1929,7 @@ nv108_chipset = {
 	.fb = gk110_fb_new,
 	.fuse = gf100_fuse_new,
 	.gpio = gk104_gpio_new,
-	.i2c = gk104_i2c_new,
+	.i2c = gk110_i2c_new,
 	.ibus = gk104_ibus_new,
 	.iccsense = gf100_iccsense_new,
 	.imem = nv50_instmem_new,
@@ -1967,7 +1967,7 @@ nv117_chipset = {
 	.fb = gm107_fb_new,
 	.fuse = gm107_fuse_new,
 	.gpio = gk104_gpio_new,
-	.i2c = gk104_i2c_new,
+	.i2c = gk110_i2c_new,
 	.ibus = gk104_ibus_new,
 	.iccsense = gf100_iccsense_new,
 	.imem = nv50_instmem_new,
@@ -2003,7 +2003,7 @@ nv118_chipset = {
 	.fb = gm107_fb_new,
 	.fuse = gm107_fuse_new,
 	.gpio = gk104_gpio_new,
-	.i2c = gk104_i2c_new,
+	.i2c = gk110_i2c_new,
 	.ibus = gk104_ibus_new,
 	.iccsense = gf100_iccsense_new,
 	.imem = nv50_instmem_new,
@@ -2924,17 +2924,34 @@ nvkm_device_del(struct nvkm_device **pdevice)
 	}
 }
 
+/* returns true if the GPU is in the CPU native byte order */
 static inline bool
 nvkm_device_endianness(struct nvkm_device *device)
 {
-	u32 boot1 = nvkm_rd32(device, 0x000004) & 0x01000001;
 #ifdef __BIG_ENDIAN
-	if (!boot1)
-		return false;
+	const bool big_endian = true;
 #else
-	if (boot1)
-		return false;
+	const bool big_endian = false;
 #endif
+
+	/* Read NV_PMC_BOOT_1, and assume non-functional endian switch if it
+	 * doesn't contain the expected values.
+	 */
+	u32 pmc_boot_1 = nvkm_rd32(device, 0x000004);
+	if (pmc_boot_1 && pmc_boot_1 != 0x01000001)
+		return !big_endian; /* Assume GPU is LE in this case. */
+
+	/* 0 means LE and 0x01000001 means BE GPU. Condition is true when
+	 * GPU/CPU endianness don't match.
+	 */
+	if (big_endian == !pmc_boot_1) {
+		nvkm_wr32(device, 0x000004, 0x01000001);
+		nvkm_rd32(device, 0x000000);
+		if (nvkm_rd32(device, 0x000004) != (big_endian ? 0x01000001 : 0x00000000))
+			return !big_endian; /* Assume GPU is LE on any unexpected read-back. */
+	}
+
+	/* CPU/GPU endianness should (hopefully) match. */
 	return true;
 }
 
@@ -2987,14 +3004,10 @@ nvkm_device_ctor(const struct nvkm_device_func *func,
 	if (detect) {
 		/* switch mmio to cpu's native endianness */
 		if (!nvkm_device_endianness(device)) {
-			nvkm_wr32(device, 0x000004, 0x01000001);
-			nvkm_rd32(device, 0x000000);
-			if (!nvkm_device_endianness(device)) {
-				nvdev_error(device,
-					    "GPU not supported on big-endian\n");
-				ret = -ENOSYS;
-				goto done;
-			}
+			nvdev_error(device,
+				    "Couldn't switch GPU to CPUs endianess\n");
+			ret = -ENOSYS;
+			goto done;
 		}
 
 		boot0 = nvkm_rd32(device, 0x000000);
@@ -3149,6 +3162,7 @@ nvkm_device_ctor(const struct nvkm_device_func *func,
 		case 0x168: device->chip = &nv168_chipset; break;
 		default:
 			nvdev_error(device, "unknown chipset (%08x)\n", boot0);
+			ret = -ENODEV;
 			goto done;
 		}
 
