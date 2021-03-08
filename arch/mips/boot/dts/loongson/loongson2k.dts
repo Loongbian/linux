@@ -24,7 +24,7 @@
 	};
 
 	package0: bus@10000000 {
-		compatible = "simple-bus";
+		compatible = "simple-bus", "ls,nbus";
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges = <0 0x10000000 0 0x10000000 0 0x10000000
@@ -141,6 +141,13 @@
 		rtc0: rtc@1fe07800 {
 			compatible = "loongson,ls2k-rtc";
 			reg = <0 0x1fe07800 0 0x78>;
+		};
+
+		hda: hda@40690000 {
+			compatible = "loongson,ls-audio";
+			reg = <0 0x40690000 0 0xffff>;
+			interrupt-parent = <&liointc0>;
+			interrupts = <4 IRQ_TYPE_LEVEL_LOW>;
 		};
 
 		liointc0: interrupt-controller@1fe11400 {
@@ -264,6 +271,7 @@
 				interrupt-parent = <&liointc0>;
 			};
 
+/*
 			hda@7,0 {
 				compatible = "pci0014,7a07.0",
 						   "pci0014,7a07",
@@ -274,7 +282,7 @@
 				interrupts = <4 IRQ_TYPE_LEVEL_LOW>;
 				interrupt-parent = <&liointc0>;
 			};
-
+*/
 			sata@8,0 {
 				compatible = "pci0014,7a08.0",
 						   "pci0014,7a08",
