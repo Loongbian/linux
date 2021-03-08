@@ -9,6 +9,7 @@
 #include <sound/core.h>
 #include <sound/hdaudio.h>
 #include <sound/hda_register.h>
+#include "../pci/hda/hda_controller.h"
 
 /* clear CORB read pointer properly */
 static void azx_clear_corbrp(struct hdac_bus *bus)
@@ -41,6 +42,7 @@ static void azx_clear_corbrp(struct hdac_bus *bus)
  */
 void snd_hdac_bus_init_cmd_io(struct hdac_bus *bus)
 {
+	struct azx *chip = bus_to_azx(bus);
 	WARN_ON_ONCE(!bus->rb.area);
 
 	spin_lock_irq(&bus->reg_lock);
@@ -57,11 +59,15 @@ void snd_hdac_bus_init_cmd_io(struct hdac_bus *bus)
 
 	/* reset the corb hw read pointer */
 	snd_hdac_chip_writew(bus, CORBRP, AZX_CORBRP_RST);
-	if (!bus->corbrp_self_clear)
+	if (chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND)
+		snd_hdac_chip_writew(bus, CORBRP, 0);
+	else if (!bus->corbrp_self_clear)
 		azx_clear_corbrp(bus);
 
 	/* enable corb dma */
 	snd_hdac_chip_writeb(bus, CORBCTL, AZX_CORBCTL_RUN);
+	if (chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND)
+		snd_hdac_chip_readb(bus, CORBCTL);
 
 	/* RIRB set up */
 	bus->rirb.addr = bus->rb.addr + 2048;
@@ -78,7 +84,12 @@ void snd_hdac_bus_init_cmd_io(struct hdac_bus *bus)
 	/* set N=1, get RIRB response interrupt for new entry */
 	snd_hdac_chip_writew(bus, RINTCNT, 1);
 	/* enable rirb dma and response irq */
-	snd_hdac_chip_writeb(bus, RIRBCTL, AZX_RBCTL_DMA_EN | AZX_RBCTL_IRQ_EN);
+	if (chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND) {
+		snd_hdac_chip_writeb(bus, RIRBCTL, AZX_RBCTL_DMA_EN);
+		snd_hdac_chip_readb(bus, RIRBCTL);
+	}
+	else
+		snd_hdac_chip_writeb(bus, RIRBCTL, AZX_RBCTL_DMA_EN | AZX_RBCTL_IRQ_EN);
 	/* Accept unsolicited responses */
 	snd_hdac_chip_updatel(bus, GCTL, AZX_GCTL_UNSOL, AZX_GCTL_UNSOL);
 	spin_unlock_irq(&bus->reg_lock);
@@ -243,6 +254,7 @@ int snd_hdac_bus_get_response(struct hdac_bus *bus, unsigned int addr,
 	unsigned long timeout;
 	unsigned long loopcounter;
 	wait_queue_entry_t wait;
+	struct azx *chip = bus_to_azx(bus);
 	bool warned = false;
 
 	init_wait_entry(&wait, 0);
@@ -253,8 +265,11 @@ int snd_hdac_bus_get_response(struct hdac_bus *bus, unsigned int addr,
 		if (!bus->polling_mode)
 			prepare_to_wait(&bus->rirb_wq, &wait,
 					TASK_UNINTERRUPTIBLE);
-		if (bus->polling_mode)
+		if (bus->polling_mode) {
+			if (chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND)
+				bus->rirb.cmds[addr] %= AZX_MAX_RIRB_ENTRIES;
 			snd_hdac_bus_update_rirb(bus);
+		}
 		if (!bus->rirb.cmds[addr]) {
 			if (res)
 				*res = bus->rirb.res[addr]; /* the last value */
@@ -406,7 +421,7 @@ void snd_hdac_bus_exit_link_reset(struct hdac_bus *bus)
 {
 	unsigned long timeout;
 
-	snd_hdac_chip_updateb(bus, GCTL, AZX_GCTL_RESET, AZX_GCTL_RESET);
+	snd_hdac_chip_updateb(bus, GCTL, 0, AZX_GCTL_RESET);
 
 	timeout = jiffies + msecs_to_jiffies(100);
 	while (!snd_hdac_chip_readb(bus, GCTL) && time_before(jiffies, timeout))
@@ -443,6 +458,7 @@ int snd_hdac_bus_reset_link(struct hdac_bus *bus, bool full_reset)
 		dev_dbg(bus->dev, "controller not ready!\n");
 		return -EBUSY;
 	}
+	snd_hdac_chip_updatel(bus, GCTL, 0, AZX_GCTL_UNSOL);
 
 	/* detect codecs */
 	if (!bus->codec_mask) {
@@ -458,9 +474,7 @@ EXPORT_SYMBOL_GPL(snd_hdac_bus_reset_link);
 static void azx_int_enable(struct hdac_bus *bus)
 {
 	/* enable controller CIE and GIE */
-	snd_hdac_chip_updatel(bus, INTCTL,
-			      AZX_INT_CTRL_EN | AZX_INT_GLOBAL_EN,
-			      AZX_INT_CTRL_EN | AZX_INT_GLOBAL_EN);
+	snd_hdac_chip_updatel(bus, INTCTL, 0, AZX_INT_CTRL_EN | AZX_INT_GLOBAL_EN);
 }
 
 /* disable interrupts */
@@ -483,16 +497,23 @@ static void azx_int_disable(struct hdac_bus *bus)
 static void azx_int_clear(struct hdac_bus *bus)
 {
 	struct hdac_stream *azx_dev;
+	struct azx *chip = bus_to_azx(bus);
 
 	/* clear stream status */
-	list_for_each_entry(azx_dev, &bus->stream_list, list)
-		snd_hdac_stream_writeb(azx_dev, SD_STS, SD_INT_MASK);
-
+	list_for_each_entry(azx_dev, &bus->stream_list, list) {
+		if (chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND)
+			snd_hdac_stream_updateb(azx_dev, SD_STS, 0, 0);
+		else
+			snd_hdac_stream_writeb(azx_dev, SD_STS, SD_INT_MASK);
+	}
 	/* clear STATESTS */
 	snd_hdac_chip_writew(bus, STATESTS, STATESTS_INT_MASK);
 
 	/* clear rirb status */
-	snd_hdac_chip_writeb(bus, RIRBSTS, RIRB_INT_MASK);
+	if (chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND)
+		snd_hdac_chip_updateb(bus, RIRBSTS, ~RIRB_INT_MASK, 0);
+	else
+		snd_hdac_chip_writeb(bus, RIRBSTS, RIRB_INT_MASK);
 
 	/* clear int status */
 	snd_hdac_chip_writel(bus, INTSTS, AZX_INT_CTRL_EN | AZX_INT_ALL_STREAM);
@@ -507,18 +528,15 @@ bool snd_hdac_bus_init_chip(struct hdac_bus *bus, bool full_reset)
 {
 	if (bus->chip_init)
 		return false;
-
 	/* reset controller */
 	snd_hdac_bus_reset_link(bus, full_reset);
 
 	/* clear interrupts */
 	azx_int_clear(bus);
+	azx_int_enable(bus);
 
 	/* initialize the codec command I/O */
 	snd_hdac_bus_init_cmd_io(bus);
-
-	/* enable interrupts after CORB/RIRB buffers are initialized above */
-	azx_int_enable(bus);
 
 	/* program the position buffer */
 	if (bus->use_posbuf && bus->posbuf.addr) {
@@ -572,11 +590,17 @@ int snd_hdac_bus_handle_stream_irq(struct hdac_bus *bus, unsigned int status,
 	struct hdac_stream *azx_dev;
 	u8 sd_status;
 	int handled = 0;
+	struct azx *chip = bus_to_azx(bus);
 
 	list_for_each_entry(azx_dev, &bus->stream_list, list) {
 		if (status & azx_dev->sd_int_sta_mask) {
 			sd_status = snd_hdac_stream_readb(azx_dev, SD_STS);
-			snd_hdac_stream_writeb(azx_dev, SD_STS, SD_INT_MASK);
+			if (chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND) {
+				snd_hdac_stream_writeb(azx_dev, SD_STS, sd_status);
+				snd_hdac_stream_readb(azx_dev, SD_STS);
+			}
+			else
+				snd_hdac_stream_writeb(azx_dev, SD_STS, SD_INT_MASK);
 			handled |= 1 << azx_dev->index;
 			if (!azx_dev->substream || !azx_dev->running ||
 			    !(sd_status & SD_INT_COMPLETE))

@@ -12,6 +12,7 @@
 #include <sound/hdaudio.h>
 #include <sound/hda_register.h>
 #include "trace.h"
+#include "../pci/hda/hda_controller.h"
 
 /**
  * snd_hdac_get_stream_stripe_ctl - get stripe control value
@@ -84,27 +85,33 @@ void snd_hdac_stream_start(struct hdac_stream *azx_dev, bool fresh_start)
 {
 	struct hdac_bus *bus = azx_dev->bus;
 	int stripe_ctl;
-
+	struct azx *chip = bus_to_azx(bus);
+	unsigned int val;
 	trace_snd_hdac_stream_start(bus, azx_dev);
 
 	azx_dev->start_wallclk = snd_hdac_chip_readl(bus, WALLCLK);
-	if (!fresh_start)
+	if (!fresh_start && !(chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND))
 		azx_dev->start_wallclk -= azx_dev->period_wallclk;
 
 	/* enable SIE */
-	snd_hdac_chip_updatel(bus, INTCTL,
-			      1 << azx_dev->index,
-			      1 << azx_dev->index);
+	snd_hdac_chip_updatel(bus, INTCTL, 0, 1 << azx_dev->index);
 	/* set stripe control */
-	if (azx_dev->stripe) {
+	/*if (azx_dev->stripe) {
 		if (azx_dev->substream)
 			stripe_ctl = snd_hdac_get_stream_stripe_ctl(bus, azx_dev->substream);
 		else
 			stripe_ctl = 0;
 		snd_hdac_stream_updateb(azx_dev, SD_CTL_3B, SD_CTL_STRIPE_MASK,
 					stripe_ctl);
-	}
+	}*/
 	/* set DMA start and interrupt mask */
+	if (chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND) {
+		snd_hdac_stream_updatel(azx_dev, SD_CTL,
+				0, SD_CTL_DMA_START | SD_INT_MASK);
+		snd_hdac_stream_updatel(azx_dev, SD_CTL, SD_CTL_STREAM_TAG_MASK, azx_dev->stream_tag << SD_CTL_STREAM_TAG_SHIFT);
+		val = snd_hdac_stream_readl(azx_dev, SD_CTL);
+	}
+	else
 	snd_hdac_stream_updateb(azx_dev, SD_CTL,
 				0, SD_CTL_DMA_START | SD_INT_MASK);
 	azx_dev->running = true;
@@ -117,11 +124,29 @@ EXPORT_SYMBOL_GPL(snd_hdac_stream_start);
  */
 void snd_hdac_stream_clear(struct hdac_stream *azx_dev)
 {
-	snd_hdac_stream_updateb(azx_dev, SD_CTL,
+/*	snd_hdac_stream_updateb(azx_dev, SD_CTL,
 				SD_CTL_DMA_START | SD_INT_MASK, 0);
-	snd_hdac_stream_writeb(azx_dev, SD_STS, SD_INT_MASK); /* to be sure */
+	snd_hdac_stream_writeb(azx_dev, SD_STS, SD_INT_MASK);
 	if (azx_dev->stripe)
 		snd_hdac_stream_updateb(azx_dev, SD_CTL_3B, SD_CTL_STRIPE_MASK, 0);
+	azx_dev->running = false;
+*/
+	struct snd_pcm_substream *substream = azx_dev->substream;
+	int stream = substream->stream;
+	struct azx *chip = bus_to_azx(azx_dev->bus);
+
+	if (chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND) {
+		snd_hdac_stream_updatel(azx_dev, SD_CTL,
+				SD_CTL_DMA_START | SD_INT_MASK, 0);
+		snd_hdac_stream_updateb(azx_dev, SD_STS, 0, 0); /* to be sure */
+		stream_to_azx_dev(azx_dev)->fix_prvpos =
+			chip->get_position[stream](chip, stream_to_azx_dev(azx_dev));
+	}
+	else {
+		snd_hdac_stream_updateb(azx_dev, SD_CTL,
+				SD_CTL_DMA_START | SD_INT_MASK, 0);
+		snd_hdac_stream_writeb(azx_dev, SD_STS, SD_INT_MASK); /* to be sure */
+	}
 	azx_dev->running = false;
 }
 EXPORT_SYMBOL_GPL(snd_hdac_stream_clear);
@@ -150,9 +175,11 @@ void snd_hdac_stream_reset(struct hdac_stream *azx_dev)
 {
 	unsigned char val;
 	int timeout;
+	struct azx *chip = bus_to_azx(azx_dev->bus);
+	if (chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND)
+		goto out;
 
 	snd_hdac_stream_clear(azx_dev);
-
 	snd_hdac_stream_updateb(azx_dev, SD_CTL, 0, SD_CTL_STREAM_RESET);
 	udelay(3);
 	timeout = 300;
@@ -175,6 +202,7 @@ void snd_hdac_stream_reset(struct hdac_stream *azx_dev)
 			break;
 	} while (--timeout);
 
+out:
 	/* reset first position - may not be synced with hw at this time */
 	if (azx_dev->posbuf)
 		*azx_dev->posbuf = 0;
@@ -189,6 +217,7 @@ int snd_hdac_stream_setup(struct hdac_stream *azx_dev)
 {
 	struct hdac_bus *bus = azx_dev->bus;
 	struct snd_pcm_runtime *runtime;
+	struct azx *chip = bus_to_azx(bus);
 	unsigned int val;
 
 	if (azx_dev->substream)
@@ -199,14 +228,24 @@ int snd_hdac_stream_setup(struct hdac_stream *azx_dev)
 	snd_hdac_stream_clear(azx_dev);
 	/* program the stream_tag */
 	val = snd_hdac_stream_readl(azx_dev, SD_CTL);
-	val = (val & ~SD_CTL_STREAM_TAG_MASK) |
-		(azx_dev->stream_tag << SD_CTL_STREAM_TAG_SHIFT);
+
+	if (!(chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND)) {
+		val = (val & ~SD_CTL_STREAM_TAG_MASK) |
+			(azx_dev->stream_tag << SD_CTL_STREAM_TAG_SHIFT);
+	}
 	if (!bus->snoop)
 		val |= SD_CTL_TRAFFIC_PRIO;
 	snd_hdac_stream_writel(azx_dev, SD_CTL, val);
 
 	/* program the length of samples in cyclic buffer */
-	snd_hdac_stream_writel(azx_dev, SD_CBL, azx_dev->bufsize);
+	if (chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND) {
+		if(azx_dev->substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+			snd_hdac_stream_writel(azx_dev, SD_CBL, azx_dev->bufsize - 64);
+		else
+			snd_hdac_stream_writel(azx_dev, SD_CBL, azx_dev->bufsize - 16);
+	}
+	else
+		snd_hdac_stream_writel(azx_dev, SD_CBL, azx_dev->bufsize);
 
 	/* program the stream format */
 	/* this value needs to be the same as the one programmed */
@@ -232,7 +271,11 @@ int snd_hdac_stream_setup(struct hdac_stream *azx_dev)
 	/* set the interrupt enable bits in the descriptor control register */
 	snd_hdac_stream_updatel(azx_dev, SD_CTL, 0, SD_INT_MASK);
 
-	azx_dev->fifo_size = snd_hdac_stream_readw(azx_dev, SD_FIFOSIZE) + 1;
+	if (azx_dev->direction == SNDRV_PCM_STREAM_PLAYBACK)
+		azx_dev->fifo_size =
+			snd_hdac_stream_readw(azx_dev, SD_FIFOSIZE) + 1;
+	else
+		azx_dev->fifo_size = 0;
 
 	/* when LPIB delay correction gives a small negative value,
 	 * we ignore it; currently set the threshold statically to
@@ -412,6 +455,7 @@ int snd_hdac_stream_setup_periods(struct hdac_stream *azx_dev)
 	__le32 *bdl;
 	int i, ofs, periods, period_bytes;
 	int pos_adj, pos_align;
+	struct azx *chip = bus_to_azx(bus);
 
 	/* reset BDL address */
 	snd_hdac_stream_writel(azx_dev, SD_BDLPL, 0);
@@ -426,6 +470,8 @@ int snd_hdac_stream_setup_periods(struct hdac_stream *azx_dev)
 	azx_dev->frags = 0;
 
 	pos_adj = bus->bdl_pos_adj;
+	if (chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND)
+		pos_adj = 0;
 	if (!azx_dev->no_period_wakeup && pos_adj > 0) {
 		pos_align = pos_adj;
 		pos_adj = (pos_adj * runtime->rate + 47999) / 48000;
@@ -631,27 +677,20 @@ void snd_hdac_stream_sync(struct hdac_stream *azx_dev, bool start,
 		nwait = 0;
 		i = 0;
 		list_for_each_entry(s, &bus->stream_list, list) {
-			if (!(streams & (1 << i++)))
-				continue;
-
-			if (start) {
-				/* check FIFO gets ready */
-				if (!(snd_hdac_stream_readb(s, SD_STS) &
-				      SD_STS_FIFO_READY))
-					nwait++;
-			} else {
-				/* check RUN bit is cleared */
-				if (snd_hdac_stream_readb(s, SD_CTL) &
-				    SD_CTL_DMA_START) {
-					nwait++;
-					/*
-					 * Perform stream reset if DMA RUN
-					 * bit not cleared within given timeout
-					 */
-					if (timeout == 1)
-						snd_hdac_stream_reset(s);
+			if (streams & (1 << i)) {
+				if (start) {
+					/* check FIFO gets ready */
+					if (!(snd_hdac_stream_readb(s, SD_STS) &
+					      SD_STS_FIFO_READY))
+						nwait++;
+				} else {
+					/* check RUN bit is cleared */
+					if (snd_hdac_stream_readb(s, SD_CTL) &
+					    SD_CTL_DMA_START)
+						nwait++;
 				}
 			}
+			i++;
 		}
 		if (!nwait)
 			break;

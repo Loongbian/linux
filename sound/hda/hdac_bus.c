@@ -11,7 +11,7 @@
 #include <sound/hdaudio.h>
 #include "local.h"
 #include "trace.h"
-
+#include "../pci/hda/hda_controller.h"
 static void snd_hdac_bus_process_unsol_events(struct work_struct *work);
 
 static const struct hdac_bus_ops default_ops = {
@@ -36,7 +36,7 @@ int snd_hdac_bus_init(struct hdac_bus *bus, struct device *dev,
 		bus->ops = ops;
 	else
 		bus->ops = &default_ops;
-	bus->dma_type = SNDRV_DMA_TYPE_DEV;
+	//bus->dma_type = SNDRV_DMA_TYPE_DEV;
 	INIT_LIST_HEAD(&bus->stream_list);
 	INIT_LIST_HEAD(&bus->codec_list);
 	INIT_WORK(&bus->unsol_work, snd_hdac_bus_process_unsol_events);
@@ -97,6 +97,7 @@ int snd_hdac_bus_exec_verb_unlocked(struct hdac_bus *bus, unsigned int addr,
 {
 	unsigned int tmp;
 	int err;
+	struct azx *chip = bus_to_azx(bus);
 
 	if (cmd == ~0)
 		return -EINVAL;
@@ -105,7 +106,9 @@ int snd_hdac_bus_exec_verb_unlocked(struct hdac_bus *bus, unsigned int addr,
 		*res = -1;
 	else if (bus->sync_write)
 		res = &tmp;
-	for (;;) {
+	if (chip->driver_caps & AZX_DCAPS_LS_HDA_WORKAROUND)
+		err = bus->ops->command(bus, cmd);
+	else for (;;) {
 		trace_hda_send_cmd(bus, cmd);
 		err = bus->ops->command(bus, cmd);
 		if (err != -EAGAIN)
